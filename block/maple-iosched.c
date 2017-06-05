@@ -8,7 +8,7 @@
  *
  * Maple uses a first come first serve style algorithm with seperated read/write
  * handling to allow for read biases. By prioritizing reads, simple tasks should improve
- * in performance. Maple also uses hooks for the state notifier driver to increase
+ * in performance. Maple also uses hooks for the powersuspend driver to increase
  * expirations when power is suspended to decrease workload.
  */
 #include <linux/blkdev.h>
@@ -24,10 +24,10 @@
 enum { ASYNC, SYNC };
 
 /* Tunables */
-static const int sync_read_expire = 100;	/* max time before a read sync is submitted. */
-static const int sync_write_expire = 350;	/* max time before a write sync is submitted. */
-static const int async_read_expire = 200;	/* ditto for read async, these limits are SOFT! */
-static const int async_write_expire = 500;	/* ditto for write async, these limits are SOFT! */
+static const int sync_read_expire = 350;	/* max time before a read sync is submitted. */
+static const int sync_write_expire = 550;	/* max time before a write sync is submitted. */
+static const int async_read_expire = 250;	/* ditto for read async, these limits are SOFT! */
+static const int async_write_expire = 450;	/* ditto for write async, these limits are SOFT! */
 static const int fifo_batch = 16;		/* # of sequential requests treated as one by the above parameters. */
 static const int writes_starved = 4;		/* max times reads can starve a write */
 static const int sleep_latency_multiple = 10;	/* multple for expire time when device is asleep */
@@ -78,20 +78,19 @@ maple_add_request(struct request_queue *q, struct request *rq)
 	struct maple_data *mdata = maple_get_data(q);
 	const int sync = rq_is_sync(rq);
 	const int dir = rq_data_dir(rq);
-	const bool display_off = state_suspended;
 
 	/*
 	 * Add request to the proper fifo list and set its
 	 * expire time.
 	 */
 
-   	/* increase expiration when device is asleep */
+   	/* inrease expiration when device is asleep */
    	unsigned int fifo_expire_suspended = mdata->fifo_expire[sync][dir] * sleep_latency_multiple;
-   	if (state_suspended && mdata->fifo_expire[sync][dir]) {
-   		rq->fifo_time = jiffies + mdata->fifo_expire[sync][dir];
-   		list_add_tail(&rq->queuelist, &mdata->fifo_list[sync][dir]);
-   	} else if (!state_suspended && fifo_expire_suspended) {
-   		rq->fifo_time = jiffies + fifo_expire_suspended;
+   	if (!state_suspended && mdata->fifo_expire[sync][dir]) {
+		rq->fifo_time = jiffies + mdata->fifo_expire[sync][dir];
+		list_add_tail(&rq->queuelist, &mdata->fifo_list[sync][dir]);
+   	} else if (state_suspended && fifo_expire_suspended) {
+		rq->fifo_time = jiffies + fifo_expire_suspended;
    		list_add_tail(&rq->queuelist, &mdata->fifo_list[sync][dir]);
    	}
 }
@@ -109,7 +108,7 @@ maple_expired_request(struct maple_data *mdata, int sync, int data_dir)
 	rq = rq_entry_fifo(list->next);
 
 	/* Request has expired */
-	if (time_after_eq(jiffies, rq->fifo_time))
+    if (time_after_eq(jiffies, rq->fifo_time))
 		return rq;
 
 	return NULL;
@@ -142,7 +141,7 @@ maple_choose_expired_request(struct maple_data *mdata)
    }
 
    if (rq_async_write && rq_sync_write) {
-     if (time_after(rq_sync_write->fifo_time, rq_async_write->fifo_time))
+if (time_after(rq_sync_write->fifo_time, rq_async_write->fifo_time))
              return rq_async_write;
    } else if (rq_async_write) {
            return rq_async_write;
@@ -206,7 +205,6 @@ maple_dispatch_requests(struct request_queue *q, int force)
 	struct maple_data *mdata = maple_get_data(q);
 	struct request *rq = NULL;
 	int data_dir = READ;
-  const bool display_off = state_suspended;
 
 	/*
 	 * Retrieve any expired request after a batch of
@@ -218,9 +216,9 @@ maple_dispatch_requests(struct request_queue *q, int force)
 	/* Retrieve request */
 	if (!rq) {
 		/* Treat writes fairly while suspended, otherwise allow them to be starved */
-		if (state_suspended && mdata->starved >= mdata->writes_starved)
+		if (!state_suspended && mdata->starved >= mdata->writes_starved)
 			data_dir = WRITE;
-		else if (!state_suspended && mdata->starved >= 1)
+		else if (state_suspended && mdata->starved >= 1)
 			data_dir = WRITE;
 
 		rq = maple_choose_request(mdata, data_dir);

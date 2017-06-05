@@ -1541,6 +1541,8 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 
 		sock_copy(newsk, sk);
 
+		newsk->sk_prot_creator = sk->sk_prot;
+
 		/* SANITY */
 		get_net(sock_net(newsk));
 		sk_node_init(&newsk->sk_node);
@@ -1798,17 +1800,33 @@ void *sock_kmalloc(struct sock *sk, int size, gfp_t priority)
 }
 EXPORT_SYMBOL(sock_kmalloc);
 
-/*
- * Free an option memory block.
+/* Free an option memory block. Note, we actually want the inline
+ * here as this allows gcc to detect the nullify and fold away the
+ * condition entirely.
  */
-void sock_kfree_s(struct sock *sk, void *mem, int size)
+static inline void __sock_kfree_s(struct sock *sk, void *mem, int size,
+				  const bool nullify)
 {
 	if (WARN_ON_ONCE(!mem))
 		return;
-	kfree(mem);
+	if (nullify)
+		kzfree(mem);
+	else
+		kfree(mem);
 	atomic_sub(size, &sk->sk_omem_alloc);
 }
+
+void sock_kfree_s(struct sock *sk, void *mem, int size)
+{
+	__sock_kfree_s(sk, mem, size, false);
+}
 EXPORT_SYMBOL(sock_kfree_s);
+
+void sock_kzfree_s(struct sock *sk, void *mem, int size)
+{
+	__sock_kfree_s(sk, mem, size, true);
+}
+EXPORT_SYMBOL(sock_kzfree_s);
 
 /* It is almost wait_for_tcp_memory minus release_sock/lock_sock.
    I think, these locks should be removed for datagram sockets.

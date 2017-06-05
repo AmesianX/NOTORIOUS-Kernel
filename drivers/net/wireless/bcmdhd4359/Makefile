@@ -1,12 +1,12 @@
 #
-# Copyright (C) 1999-2016, Broadcom Corporation
-#
+# Copyright (C) 1999-2017, Broadcom Corporation
+# 
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
 # under the terms of the GNU General Public License version 2 (the "GPL"),
 # available at http://www.broadcom.com/licenses/GPLv2.php, with the
 # following added to such license:
-#
+# 
 #      As a special exception, the copyright holders of this software give you
 # permission to link this software with independent modules, and to copy and
 # distribute the resulting executable under terms of your choice, provided that
@@ -14,7 +14,7 @@
 # the license of that module.  An independent module is a module which is not
 # derived from this software.  The special exception does not apply to any
 # modifications of the software.
-#
+# 
 #      Notwithstanding the above, under no circumstances may you combine this
 # software in any way with any other Broadcom software provided under a license
 # other than the GPL, without Broadcom's express prior written consent.
@@ -80,6 +80,8 @@ ifeq ($(BUS_IFACE_PCIE),y)
 	DHDCFLAGS += -DDHD_ALLOC_COHERENT_MEM_FROM_ATOMIC_POOL
 	# Enable Link down recovery
 	DHDCFLAGS += -DSUPPORT_LINKDOWN_RECOVERY
+	# Enable Dongle Isolation
+	DHDCFLAGS += -DDONGLE_ENABLE_ISOLATION
 	# Enable Firmware Coredump
 	DHDCFLAGS += -DDHD_FW_COREDUMP
 	# Enable PKTID AUDIT
@@ -126,6 +128,9 @@ DHDCFLAGS += -DDHD_8021X_DUMP
 
 # Print DHCP
 DHDCFLAGS += -DDHD_DHCP_DUMP
+
+# Print ICMP
+DHDCFLAGS += -DDHD_ICMP_DUMP
 
 # VSDB
 DHDCFLAGS += -DVSDB
@@ -225,7 +230,7 @@ DHDCFLAGS += -DPKTPRIO_OVERRIDE
 # Prevent rx thread monopolize
 DHDCFLAGS += -DWAIT_DEQUEUE
 
-# Control PM related value for MFG process(Read from file)
+# Control PM related value for MFG process(Read from file) 
 DHDCFLAGS += -DDHD_PM_CONTROL_FROM_FILE
 
 # Use Android wake lock mechanism
@@ -251,7 +256,25 @@ DHDCFLAGS += -DUSE_WFA_CERT_CONF
 
 DHDCFLAGS += -DCUSTOMER_SCAN_TIMEOUT_SETTING
 
+# Enable HANG event test private command
+DHDCFLAGS += -DSUPPORT_TRIGGER_HANG_EVENT
+
+# Enable Checking Blob existence
+DHDCFLAGS += -DDHD_BLOB_EXISTENCE_CHECK
+
+# Random mac scan
+DHDCFLAGS += -DSUPPORT_RANDOM_MAC_SCAN
+
+ANDROID_PLATFORM_VERSION = 7
+
+# If Android version lower than 7(Nougat) => Use Legacy File path
+ifeq ($(shell expr $(ANDROID_PLATFORM_VERSION) \< 7),1)
+DHDCFLAGS += -DDHD_LEGACY_FILE_PATH
+DHDCFLAGS += -DDHD_DISABLE_ANDROID_FEATURE_SET
+$(warning Will be use Legacy file path)
+else
 DHDCFLAGS += -DDHD_SET_COUNTRY_SUPPORT
+endif
 
 ##############################
 # Android Platform Definition
@@ -324,6 +347,9 @@ endif
 
 ifeq ($(CONFIG_ARCH_MSM),y)
   DHDCFLAGS := $(filter-out -DDHDTCPACK_SUPPRESS,$(DHDCFLAGS))
+ifeq ($(CONFIG_ARCH_MSM8998),y)
+  DHDCFLAGS += -DUSE_SMMU_ARCH_MSM
+endif
 endif
 
 
@@ -364,11 +390,9 @@ endif
 # To support CAC
   DHDCFLAGS += -DSUPPORT_SET_CAC
 
-ifeq ($(filter y,$(CONFIG_ARCH_MSM8996) $(CONFIG_SOC_EXYNOS8890)),y)
+ifeq ($(filter y,$(CONFIG_ARCH_MSM8996) $(CONFIG_ARCH_MSM8998) $(CONFIG_SOC_EXYNOS8890) $(CONFIG_ARCH_TEGRA)),y)
  # Runtime PM
   DHDCFLAGS += -DDHD_PCIE_RUNTIMEPM -DMAX_IDLE_COUNT=11 -DCUSTOM_DHD_RUNTIME_MS=100
- # Enable Dongle Isolation
-  DHDCFLAGS += -DDONGLE_ENABLE_ISOLATION
  # Disable SOFTAP_SEND_HANGEVT
   DHDCFLAGS := $(filter-out -DSOFTAP_SEND_HANGEVT,$(DHDCFLAGS))
  # CLM
@@ -388,7 +412,6 @@ ifeq ($(filter y,$(CONFIG_WLAN_HERO2) $(CONFIG_SEC_HERO2QLTE_PROJECT)),y)
 endif
 
 ifeq ($(filter y,$(CONFIG_WLAN_GRACE) $(CONFIG_SEC_GRACEQLTE_PROJECT)),y)
-  DHDCFLAGS += -DDHD_USE_CLMINFO_PARSER
   # WBTEXT (11kv) feature
   DHDCFLAGS += -DWBTEXT
 endif
@@ -398,6 +421,8 @@ endif
  # LOGTRACE_EVENT
   DHDCFLAGS += -DSHOW_LOGTRACE
   DHDCFLAGS += -DLOGTRACE_FROM_FILE
+ # HANG simulation
+  DHDCFLAGS += -DDHD_HANG_SEND_UP_TEST
 
 ifeq ($(CONFIG_BCM4359),y)
   DHDCFLAGS += -DENABLE_INSMOD_NO_FW_LOAD
@@ -406,6 +431,9 @@ ifeq ($(CONFIG_BCM4359),y)
 else
   DHDCFLAGS += -DEXYNOS_PCIE_MODULE_PATCH
 endif
+
+# Enable concate blob path
+  DHDCFLAGS += -DCONCATE_BLOB
 endif
 
 ifneq ($(CONFIG_BCM4358),)
@@ -495,6 +523,7 @@ ifneq ($(CONFIG_BCM4354),)
 # tput enhancement for SDIO
 ifeq ($(BUS_IFACE_SDIO),y)
   DHDCFLAGS += -DHW_OOB
+  DHDCFLAGS += -DCUSTOM_FRAMEBURST_SET=1
   DHDCFLAGS += -DCUSTOM_GLOM_SETTING=8 -DCUSTOM_RXCHAIN=1
   DHDCFLAGS += -DUSE_DYNAMIC_F2_BLKSIZE -DDYNAMIC_F2_BLKSIZE_FOR_NONLEGACY=128
   DHDCFLAGS += -DBCMSDIOH_TXGLOM -DCUSTOM_TXGLOM=1 -DBCMSDIOH_TXGLOM_HIGHSPEED
@@ -558,6 +587,7 @@ ifneq ($(CONFIG_BCM4339),)
   DHDCFLAGS += -DDHDTCPACK_SUPPRESS
   DHDCFLAGS += -DUSE_WL_TXBF
   DHDCFLAGS += -DUSE_WL_FRAMEBURST
+  DHDCFLAGS += -DCUSTOM_FRAMEBURST_SET=1
   DHDCFLAGS += -DRXFRAME_THREAD
   DHDCFLAGS += -DCUSTOM_AMPDU_BA_WSIZE=64 -DCUSTOM_IBSS_AMPDU_BA_WSIZE=16
   DHDCFLAGS += -DCUSTOM_DPC_CPUCORE=0
@@ -603,6 +633,7 @@ ifneq ($(CONFIG_BCM43455),)
   DHDCFLAGS += -DDHDTCPACK_SUPPRESS
   DHDCFLAGS += -DUSE_WL_TXBF
   DHDCFLAGS += -DUSE_WL_FRAMEBURST
+  DHDCFLAGS += -DCUSTOM_FRAMEBURST_SET=1
   DHDCFLAGS += -DRXFRAME_THREAD
   DHDCFLAGS += -DCUSTOM_AMPDU_BA_WSIZE=64 -DCUSTOM_IBSS_AMPDU_BA_WSIZE=16
   DHDCFLAGS += -DCUSTOM_DPC_CPUCORE=0
@@ -644,6 +675,7 @@ ifneq ($(CONFIG_BCM4335),)
 # DHDCFLAGS += -DDHD_SET_FW_HIGHSPEED
   DHDCFLAGS += -DUSE_WL_TXBF
   DHDCFLAGS += -DUSE_WL_FRAMEBURST
+  DHDCFLAGS += -DCUSTOM_FRAMEBURST_SET=1
   DHDCFLAGS += -DRXFRAME_THREAD
   DHDCFLAGS += -DREPEAT_READFRAME
   DHDCFLAGS += -DCUSTOM_AMPDU_BA_WSIZE=64
@@ -828,6 +860,9 @@ endif
 ifeq ($(CONFIG_ARCH_MSM8996),y)
   DHDCFLAGS += -Wno-date-time
 endif
+ifeq ($(CONFIG_ARCH_MSM8998),y)
+   DHDCFLAGS += -Wno-date-time
+endif
 
 # DTS Support
 ifeq ($(CONFIG_OF),y)
@@ -856,11 +891,26 @@ ifneq ($(CONFIG_ARCH_MSM8996),)
 DHDCFLAGS += -DDHD_OF_SUPPORT
 DHDCFLAGS += -DBCMPCIE_OOB_HOST_WAKE
 endif
+ifneq ($(CONFIG_ARCH_MSM8998),)
+DHDCFLAGS += -DDHD_OF_SUPPORT
+DHDCFLAGS += -DBCMPCIE_OOB_HOST_WAKE
+endif
 endif #CONFIG_OF
 
 # DEBUG UART
 ifneq ($(CONFIG_WLAN_GRACE),)
 DHDCFLAGS += -DDHD_DEBUG_UART
+endif
+
+ifneq ($(CONFIG_ARCH_TEGRA),)
+DHDCFLAGS += -DBCMPCIE_OOB_HOST_WAKE
+DHDCFLAGS := $(filter-out -DDHD_ALLOC_COHERENT_MEM_FROM_ATOMIC_POOL,$(DHDCFLAGS))
+DHDCFLAGS := $(filter-out -DDHD_USE_CLMINFO_PARSER,$(DHDCFLAGS))
+DHDCFLAGS := $(filter-out -DWL_VENDOR_EXT_SUPPORT,$(DHDCFLAGS))
+DHDCFLAGS := $(filter-out -DGSCAN_SUPPORT,$(DHDCFLAGS))
+DHDCFLAGS := $(filter-out -DRTT_SUPPORT,$(DHDCFLAGS))
+DHD_ANDROID_OFILES := $(filter-out wl_cfgvendor.o,$(DHD_ANDROID_OFILES))
+DHD_ANDROID_OFILES := $(filter-out dhd_rtt.o,$(DHD_ANDROID_OFILES))
 endif
 
 ##############################################################

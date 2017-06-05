@@ -315,6 +315,7 @@ enum {
 
 	__WQ_DRAINING		= 1 << 16, /* internal: workqueue is draining */
 	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered */
+	__WQ_ORDERED_EXPLICIT	= 1 << 19, /* internal: alloc_ordered_workqueue() */
 
 	WQ_MAX_ACTIVE		= 512,	  /* I like 512, better ideas? */
 	WQ_MAX_UNBOUND_PER_CPU	= 4,	  /* 4 * #cpus for unbound wq */
@@ -412,7 +413,8 @@ __alloc_workqueue_key(const char *fmt, unsigned int flags, int max_active,
  * Pointer to the allocated workqueue on success, %NULL on failure.
  */
 #define alloc_ordered_workqueue(fmt, flags, args...)			\
-	alloc_workqueue(fmt, WQ_UNBOUND | __WQ_ORDERED | (flags), 1, ##args)
+	alloc_workqueue(fmt, WQ_UNBOUND | __WQ_ORDERED |		\
+			__WQ_ORDERED_EXPLICIT | (flags), 1, ##args)
 
 #define create_workqueue(name)						\
 	alloc_workqueue("%s", WQ_MEM_RECLAIM, 1, (name))
@@ -458,6 +460,7 @@ extern bool workqueue_congested(int cpu, struct workqueue_struct *wq);
 extern unsigned int work_busy(struct work_struct *work);
 extern __printf(1, 2) void set_worker_desc(const char *fmt, ...);
 extern void print_worker_info(const char *log_lvl, struct task_struct *task);
+extern void show_workqueue_state(void);
 
 /**
  * queue_work - queue work on a workqueue
@@ -560,6 +563,15 @@ static inline bool schedule_delayed_work(struct delayed_work *dwork,
 					 unsigned long delay)
 {
 	return queue_delayed_work(system_wq, dwork, delay);
+}
+
+/**
+ * delayed_work_busy - See work_busy()
+ * @dwork: the delayed work to be tested
+ */
+static inline unsigned int delayed_work_busy(struct delayed_work *dwork)
+{
+	return work_busy(&dwork->work);
 }
 
 /**

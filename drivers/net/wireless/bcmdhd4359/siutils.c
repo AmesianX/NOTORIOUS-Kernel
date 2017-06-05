@@ -2,7 +2,7 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 1999-2016, Broadcom Corporation
+ * Copyright (C) 1999-2017, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -482,6 +482,11 @@ si_chipid_fixup(si_t *sih)
 	}
 }
 
+static inline bool cmp_bustype(uint bustype1, uint bustype2)
+{
+	return (bustype1 != bustype2);
+}
+
 /**
  * Allocate an si handle. This function may be called multiple times.
  *
@@ -538,7 +543,7 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, void *regs,
 	}
 
 	sih->bustype = bustype;
-	if (bustype != BUSTYPE(bustype)) {
+	if (cmp_bustype(bustype, BUSTYPE(bustype))) {
 		SI_ERROR(("si_doattach: bus type %d does not match configured bus type %d\n",
 			bustype, BUSTYPE(bustype)));
 		return NULL;

@@ -214,10 +214,9 @@ static void testmgr_free_buf(char *buf[XBUFSIZE])
 static int wait_async_op(struct tcrypt_result *tr, int ret)
 {
 	if (ret == -EINPROGRESS || ret == -EBUSY) {
-		ret = wait_for_completion_interruptible(&tr->completion);
-		if (!ret)
-			ret = tr->err;
+		wait_for_completion(&tr->completion);
 		reinit_completion(&tr->completion);
+		ret = tr->err;
 	}
 	return ret;
 }
@@ -386,12 +385,11 @@ static int __test_hash(struct crypto_ahash *tfm, struct hash_testvec *template,
 			break;
 		case -EINPROGRESS:
 		case -EBUSY:
-			ret = wait_for_completion_interruptible(
-				&tresult.completion);
-			if (!ret && !(ret = tresult.err)) {
-				reinit_completion(&tresult.completion);
+			wait_for_completion(&tresult.completion);
+			reinit_completion(&tresult.completion);
+			ret = tresult.err;
+			if (!ret)
 				break;
-			}
 			/* fall through */
 		default:
 			printk(KERN_ERR "alg: hash: digest failed "
@@ -464,7 +462,7 @@ static int __test_aead(struct crypto_aead *tfm, int enc,
 	struct scatterlist *sgout;
 	const char *e, *d;
 	struct tcrypt_result result;
-	unsigned int authsize;
+	unsigned int authsize, iv_len;
 	void *input;
 	void *output;
 	void *assoc;
@@ -535,10 +533,11 @@ static int __test_aead(struct crypto_aead *tfm, int enc,
 
 		memcpy(input, template[i].input, template[i].ilen);
 		memcpy(assoc, template[i].assoc, template[i].alen);
+		iv_len = crypto_aead_ivsize(tfm);
 		if (template[i].iv)
-			memcpy(iv, template[i].iv, MAX_IVLEN);
+			memcpy(iv, template[i].iv, iv_len);
 		else
-			memset(iv, 0, MAX_IVLEN);
+			memset(iv, 0, iv_len);
 
 		crypto_aead_clear_flags(tfm, ~0);
 		if (template[i].wk)
@@ -602,12 +601,11 @@ static int __test_aead(struct crypto_aead *tfm, int enc,
 			break;
 		case -EINPROGRESS:
 		case -EBUSY:
-			ret = wait_for_completion_interruptible(
-				&result.completion);
-			if (!ret && !(ret = result.err)) {
-				reinit_completion(&result.completion);
+			wait_for_completion(&result.completion);
+			reinit_completion(&result.completion);
+			ret = result.err;
+			if (!ret)
 				break;
-			}
 		case -EBADMSG:
 			if (template[i].novrfy)
 				/* verification failure was expected */
@@ -753,12 +751,11 @@ static int __test_aead(struct crypto_aead *tfm, int enc,
 			break;
 		case -EINPROGRESS:
 		case -EBUSY:
-			ret = wait_for_completion_interruptible(
-				&result.completion);
-			if (!ret && !(ret = result.err)) {
-				reinit_completion(&result.completion);
+			wait_for_completion(&result.completion);
+			reinit_completion(&result.completion);
+			ret = result.err;
+			if (!ret)
 				break;
-			}
 		case -EBADMSG:
 			if (template[i].novrfy)
 				/* verification failure was expected */
@@ -1035,12 +1032,11 @@ static int __test_skcipher(struct crypto_ablkcipher *tfm, int enc,
 			break;
 		case -EINPROGRESS:
 		case -EBUSY:
-			ret = wait_for_completion_interruptible(
-				&result.completion);
-			if (!ret && !((ret = result.err))) {
-				reinit_completion(&result.completion);
+			wait_for_completion(&result.completion);
+			reinit_completion(&result.completion);
+			ret = result.err;
+			if (!ret)
 				break;
-			}
 			/* fall through */
 		default:
 			pr_err("alg: skcipher%s: %s failed on test %d for %s: ret=%d\n",
@@ -1130,12 +1126,11 @@ static int __test_skcipher(struct crypto_ablkcipher *tfm, int enc,
 			break;
 		case -EINPROGRESS:
 		case -EBUSY:
-			ret = wait_for_completion_interruptible(
-					&result.completion);
-			if (!ret && !((ret = result.err))) {
-				reinit_completion(&result.completion);
+			wait_for_completion(&result.completion);
+			reinit_completion(&result.completion);
+			ret = result.err;
+			if (!ret)
 				break;
-			}
 			/* fall through */
 		default:
 			pr_err("alg: skcipher%s: %s failed on chunk test %d for %s: ret=%d\n",
@@ -1512,11 +1507,11 @@ static int test_cprng(struct crypto_rng *tfm, struct cprng_testvec *template,
 		for (j = 0; j < template[i].loops; j++) {
 			err = crypto_rng_get_bytes(tfm, result,
 						   template[i].rlen);
-			if (err != template[i].rlen) {
+			if (err < 0) {
 				printk(KERN_ERR "alg: cprng: Failed to obtain "
 				       "the correct amount of random data for "
-				       "%s (requested %d, got %d)\n", algo,
-				       template[i].rlen, err);
+				       "%s (requested %d)\n", algo,
+				       template[i].rlen);
 				goto out;
 			}
 		}
@@ -1543,7 +1538,7 @@ static int alg_test_aead(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_aead *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_aead(driver, type, mask);
+	tfm = crypto_alloc_aead(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: aead: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1572,7 +1567,7 @@ static int alg_test_cipher(const struct alg_test_desc *desc,
 	struct crypto_cipher *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_cipher(driver, type, mask);
+	tfm = crypto_alloc_cipher(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: cipher: Failed to load transform for "
 		       "%s: %ld\n", driver, PTR_ERR(tfm));
@@ -1601,7 +1596,7 @@ static int alg_test_skcipher(const struct alg_test_desc *desc,
 	struct crypto_ablkcipher *tfm;
 	int err = 0;
 
-	tfm = crypto_alloc_ablkcipher(driver, type, mask);
+	tfm = crypto_alloc_ablkcipher(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: skcipher: Failed to load transform for "
 		       "%s: %ld\n", driver, PTR_ERR(tfm));
@@ -1674,7 +1669,7 @@ static int alg_test_hash(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_ahash *tfm;
 	int err;
 
-	tfm = crypto_alloc_ahash(driver, type, mask);
+	tfm = crypto_alloc_ahash(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: hash: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1702,7 +1697,7 @@ static int alg_test_crc32c(const struct alg_test_desc *desc,
 	if (err)
 		goto out;
 
-	tfm = crypto_alloc_shash(driver, type, mask);
+	tfm = crypto_alloc_shash(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(tfm)) {
 		printk(KERN_ERR "alg: crc32c: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(tfm));
@@ -1744,7 +1739,7 @@ static int alg_test_cprng(const struct alg_test_desc *desc, const char *driver,
 	struct crypto_rng *rng;
 	int err;
 
-	rng = crypto_alloc_rng(driver, type, mask);
+	rng = crypto_alloc_rng(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(rng)) {
 		printk(KERN_ERR "alg: cprng: Failed to load transform for %s: "
 		       "%ld\n", driver, PTR_ERR(rng));
@@ -1771,7 +1766,7 @@ static int drbg_cavs_test(struct drbg_testvec *test, int pr,
 	if (!buf)
 		return -ENOMEM;
 
-	drng = crypto_alloc_rng(driver, type, mask);
+	drng = crypto_alloc_rng(driver, type | CRYPTO_ALG_INTERNAL, mask);
 	if (IS_ERR(drng)) {
 		printk(KERN_ERR "alg: drbg: could not allocate DRNG handle for "
 		       "%s\n", driver);
@@ -1797,7 +1792,7 @@ static int drbg_cavs_test(struct drbg_testvec *test, int pr,
 		ret = crypto_drbg_get_bytes_addtl(drng,
 			buf, test->expectedlen, &addtl);
 	}
-	if (ret <= 0) {
+	if (ret < 0) {
 		printk(KERN_ERR "alg: drbg: could not obtain random data for "
 		       "driver %s\n", driver);
 		goto outbuf;
@@ -1812,7 +1807,7 @@ static int drbg_cavs_test(struct drbg_testvec *test, int pr,
 		ret = crypto_drbg_get_bytes_addtl(drng,
 			buf, test->expectedlen, &addtl);
 	}
-	if (ret <= 0) {
+	if (ret < 0) {
 		printk(KERN_ERR "alg: drbg: could not obtain random data for "
 		       "driver %s\n", driver);
 		goto outbuf;
@@ -2338,6 +2333,21 @@ static const struct alg_test_desc alg_test_descs[] = {
 					.vecs = aes_ccm_dec_tv_template,
 					.count = AES_CCM_DEC_TEST_VECTORS
 				}
+			}
+		}
+	}, {
+		.alg = "chacha20",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = chacha20_enc_tv_template,
+					.count = CHACHA20_ENC_TEST_VECTORS
+				},
+				.dec = {
+					.vecs = chacha20_enc_tv_template,
+					.count = CHACHA20_ENC_TEST_VECTORS
+				},
 			}
 		}
 	}, {
@@ -3320,6 +3330,15 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "poly1305",
+		.test = alg_test_hash,
+		.suite = {
+			.hash = {
+				.vecs = poly1305_tv_template,
+				.count = POLY1305_TEST_VECTORS
+			}
+		}
+	}, {
 		.alg = "rfc3686(ctr(aes))",
 		.test = alg_test_skcipher,
 		.fips_allowed = 1,
@@ -3338,6 +3357,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "rfc4106(gcm(aes))",
 		.test = alg_test_aead,
+		.fips_allowed = 1,
 		.suite = {
 			.aead = {
 				.enc = {
@@ -3378,6 +3398,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 				.dec = {
 					.vecs = aes_gcm_rfc4543_dec_tv_template,
 					.count = AES_GCM_4543_DEC_TEST_VECTORS
+				},
+			}
+		}
+	}, {
+		.alg = "rfc7539(chacha20,poly1305)",
+		.test = alg_test_aead,
+		.suite = {
+			.aead = {
+				.enc = {
+					.vecs = rfc7539_enc_tv_template,
+					.count = RFC7539_ENC_TEST_VECTORS
+				},
+				.dec = {
+					.vecs = rfc7539_dec_tv_template,
+					.count = RFC7539_DEC_TEST_VECTORS
+				},
+			}
+		}
+	}, {
+		.alg = "rfc7539esp(chacha20,poly1305)",
+		.test = alg_test_aead,
+		.suite = {
+			.aead = {
+				.enc = {
+					.vecs = rfc7539esp_enc_tv_template,
+					.count = RFC7539ESP_ENC_TEST_VECTORS
+				},
+				.dec = {
+					.vecs = rfc7539esp_dec_tv_template,
+					.count = RFC7539ESP_DEC_TEST_VECTORS
 				},
 			}
 		}

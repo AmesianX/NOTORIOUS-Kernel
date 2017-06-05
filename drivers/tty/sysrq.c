@@ -238,8 +238,10 @@ static void sysrq_handle_showallcpus(int key)
 	 * architecture has no support for it:
 	 */
 	if (!trigger_all_cpu_backtrace()) {
-		struct pt_regs *regs = get_irq_regs();
+		struct pt_regs *regs = NULL;
 
+		if (in_irq())
+			regs = get_irq_regs();
 		if (regs) {
 			printk(KERN_INFO "CPU%d:\n", smp_processor_id());
 			show_regs(regs);
@@ -258,7 +260,10 @@ static struct sysrq_key_op sysrq_showallcpus_op = {
 
 static void sysrq_handle_showregs(int key)
 {
-	struct pt_regs *regs = get_irq_regs();
+	struct pt_regs *regs = NULL;
+
+	if (in_irq())
+		regs = get_irq_regs();
 	if (regs)
 		show_regs(regs);
 	perf_event_print_debug();
@@ -273,6 +278,7 @@ static struct sysrq_key_op sysrq_showregs_op = {
 static void sysrq_handle_showstate(int key)
 {
 	show_state();
+	show_workqueue_state();
 }
 static struct sysrq_key_op sysrq_showstate_op = {
 	.handler	= sysrq_handle_showstate,

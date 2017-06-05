@@ -45,6 +45,7 @@ struct af_alg_completion {
 struct af_alg_control {
 	struct af_alg_iv *iv;
 	int op;
+	unsigned int aead_assoclen;
 };
 
 struct af_alg_type {
@@ -53,6 +54,7 @@ struct af_alg_type {
 	int (*setkey)(void *private, const u8 *key, unsigned int keylen);
 	int (*accept)(void *private, struct sock *sk);
 	int (*accept_nokey)(void *private, struct sock *sk);
+	int (*setauthsize)(void *private, unsigned int authsize);
 
 	struct proto_ops *ops;
 	struct proto_ops *ops_nokey;

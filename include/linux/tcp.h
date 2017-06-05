@@ -264,10 +264,10 @@ struct tcp_sock {
 
 	u16	urg_data;	/* Saved octet of OOB data and control flags */
 	u8	ecn_flags;	/* ECN status bits.			*/
-	u8	reordering;	/* Packet reordering metric.		*/
+	u8	keepalive_probes; /* num of allowed keep alive probes	*/
+	u32	reordering;	/* Packet reordering metric.		*/
 	u32	snd_up;		/* Urgent pointer		*/
 
-	u8	keepalive_probes; /* num of allowed keep alive probes	*/
 /*
  *      Options received (usually on last packet, some only on SYN packets).
  */
@@ -397,7 +397,7 @@ struct tcp_sock {
 		       */
 		mp_killed:1, /* Killed with a tcp_done in mptcp? */
 		was_meta_sk:1,	/* This was a meta sk (in case of reuse) */
-		is_master_sk,
+		is_master_sk:1,
 		close_it:1,	/* Must close socket in mptcp_data_ready? */
 		closing:1;
 	struct mptcp_tcp_sock *mptcp;

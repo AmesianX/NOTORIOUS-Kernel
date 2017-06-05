@@ -813,6 +813,11 @@ dump:
 	printk("dump_once_again %d\n", dump_once_again);
 	WARN_ON(1);
 
+#if defined(CONFIG_SCSI_UFS_TEST_MODE)
+		/* do not recover system if test mode is enabled */
+		BUG();
+#endif
+
 	if (hba->debug.flag & UFSHCD_DEBUG_DUMP)
 		dump_once_again = 0;
 
@@ -1821,6 +1826,15 @@ static void exynos_ufs_host_reset(struct ufs_hba *hba)
 	exynos_ufs_attr_dump(hba);
 }
 
+static inline void exynos_ufs_dev_reset_ctrl(struct exynos_ufs *ufs, bool en)
+{
+
+	if (en)
+		hci_writel(ufs, 1 << 0, HCI_GPIO_OUT);
+	else
+		hci_writel(ufs, 0 << 0, HCI_GPIO_OUT);
+}
+
 static void exynos_ufs_dev_hw_reset(struct ufs_hba *hba)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
@@ -1861,7 +1875,7 @@ static int exynos_ufs_link_startup_notify(struct ufs_hba *hba, bool notify)
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 	int ret = 0;
 
-	switch (notify) {
+	switch ((int) notify) {
 	case PRE_CHANGE:
 		exynos_ufs_enable_io_coherency(ufs);
 		exynos_ufs_dev_hw_reset(hba);
@@ -1883,7 +1897,7 @@ static int exynos_ufs_pwr_change_notify(struct ufs_hba *hba, bool notify,
 {
 	int ret = 0;
 
-	switch (notify) {
+	switch ((int) notify) {
 	case PRE_CHANGE:
 		ret = exynos_ufs_pre_prep_pmc(hba, pwr_max, pwr_req);
 		break;
@@ -1900,7 +1914,7 @@ static int exynos_ufs_pwr_change_notify(struct ufs_hba *hba, bool notify,
 static void exynos_ufs_hibern8_notify(struct ufs_hba *hba,
 				u8 enter, bool notify)
 {
-	switch (notify) {
+	switch ((int) notify) {
 	case PRE_CHANGE:
 		exynos_ufs_pre_hibern8(hba, enter);
 		break;
@@ -1917,7 +1931,7 @@ static void exynos_ufs_clock_control_notify(struct ufs_hba *hba, bool on, bool n
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 	s32 pm_qos_int_value = ufs->pm_qos_int_value;
 
-	switch (notify) {
+	switch ((int) notify) {
 	case PRE_CHANGE:
 		if (on) {
 #ifdef CONFIG_CPU_IDLE
@@ -1959,6 +1973,8 @@ static int __exynos_ufs_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
 	pm_qos_update_request(&ufs->pm_qos_int, 0);
+
+	exynos_ufs_dev_reset_ctrl(ufs, false);
 
 	exynos_ufs_ctrl_phy_pwr(ufs, false);
 
@@ -2815,6 +2831,7 @@ static struct platform_driver exynos_ufs_driver = {
 		.owner = THIS_MODULE,
 		.pm = &exynos_ufs_dev_pm_ops,
 		.of_match_table = exynos_ufs_match,
+		.suppress_bind_attrs = true,
 	},
 	.probe = exynos_ufs_probe,
 	.remove = exynos_ufs_remove,
