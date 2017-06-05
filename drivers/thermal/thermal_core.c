@@ -69,7 +69,6 @@ static void start_poll_queue(struct thermal_zone_device *tz, int delay)
 			msecs_to_jiffies(delay));
 }
 #endif
-
 static atomic_t in_suspend;
 
 static struct thermal_governor *def_governor;
@@ -1995,36 +1994,6 @@ static struct notifier_block thermal_pm_notifier = {
 	.priority = (INT_MIN + 1),
 };
 
-static int thermal_pm_notify(struct notifier_block *nb,
-				unsigned long mode, void *_unused)
-{
-	struct thermal_zone_device *tz;
-
-	switch (mode) {
-	case PM_HIBERNATION_PREPARE:
-	case PM_RESTORE_PREPARE:
-	case PM_SUSPEND_PREPARE:
-		atomic_set(&in_suspend, 1);
-		break;
-	case PM_POST_HIBERNATION:
-	case PM_POST_RESTORE:
-	case PM_POST_SUSPEND:
-		atomic_set(&in_suspend, 0);
-		list_for_each_entry(tz, &thermal_tz_list, node) {
-			thermal_zone_device_reset(tz);
-			thermal_zone_device_update(tz);
-		}
-		break;
-	default:
-		break;
-	}
-	return 0;
-}
-
-static struct notifier_block thermal_pm_nb = {
-	.notifier_call = thermal_pm_notify,
-};
-
 static int __init thermal_init(void)
 {
 	int result;
@@ -2049,11 +2018,6 @@ static int __init thermal_init(void)
 	register_hotcpu_notifier(&thermal_cpu_notifier);
 #endif
 	register_pm_notifier(&thermal_pm_notifier);
-
-	result = register_pm_notifier(&thermal_pm_nb);
-	if (result)
-		pr_warn("Thermal: Can not register suspend notifier, return %d\n",
-			result);
 
 	return 0;
 

@@ -284,9 +284,6 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	int try_loading_module = 0;
 	int err;
 
-	if (protocol < 0 || protocol >= IPPROTO_MAX)
-		return -EINVAL;
-
 	if (!current_has_network())
 		return -EACCES;
 
@@ -1737,8 +1734,8 @@ static struct packet_offload ip_packet_offload __read_mostly = {
 	.type = cpu_to_be16(ETH_P_IP),
 	.callbacks = {
 		.gso_segment = inet_gso_segment,
-		.gro_receive	= ipip_gro_receive,
-		.gro_complete	= ipip_gro_complete,
+		.gro_receive = inet_gro_receive,
+		.gro_complete = inet_gro_complete,
 	},
 };
 
@@ -1746,7 +1743,7 @@ static const struct net_offload ipip_offload = {
 	.callbacks = {
 		.gso_segment	= inet_gso_segment,
 		.gro_receive	= ipip_gro_receive,
-		.gro_complete	= inet_gro_complete,
+		.gro_complete	= ipip_gro_complete,
 	},
 };
 
@@ -1942,3 +1939,4 @@ static int __init ipv4_proc_init(void)
 #endif /* CONFIG_PROC_FS */
 
 MODULE_ALIAS_NETPROTO(PF_INET);
+

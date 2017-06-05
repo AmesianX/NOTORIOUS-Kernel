@@ -6,22 +6,20 @@ config IOSCHED_BFQ
 	tristate "BFQ I/O scheduler"
 	default n
 	---help---
-	  The BFQ I/O scheduler tries to distribute bandwidth among
-	  all processes according to their weights.
-	  It aims at distributing the bandwidth as desired, independently of
-	  the disk parameters and with any workload. It also tries to
-	  guarantee low latency to interactive and soft real-time
-	  applications. If compiled built-in (saying Y here), BFQ can
-	  be configured to support hierarchical scheduling.
+	The BFQ I/O scheduler distributes bandwidth among all
+	processes according to their weights, regardless of the
+	device parameters and with any workload. It also guarantees
+	a low latency to interactive and soft real-time applications.
+	Details in Documentation/block/bfq-iosched.txt
 
-config CGROUP_BFQIO
+config BFQ_GROUP_IOSCHED
 	bool "BFQ hierarchical scheduling support"
-	depends on CGROUPS && IOSCHED_BFQ=y
+	depends on IOSCHED_BFQ && BLK_CGROUP
 	default n
 	---help---
-	  Enable hierarchical scheduling in BFQ, using the cgroups
-	  filesystem interface.  The name of the subsystem will be
-	  bfqio.
+
+	Enable hierarchical scheduling in BFQ, using the blkio
+	(cgroups-v1) or io (cgroups-v2) controller.
 
 config IOSCHED_CFQ
 	tristate "CFQ I/O scheduler"
@@ -34,6 +32,15 @@ config IOSCHED_CFQ
 
 	  This is the default I/O scheduler.
 
+config IOSCHED_DEADLINE
+	tristate "Deadline I/O scheduler"
+	default y
+ 	---help---
+	  The deadline I/O scheduler is simple and compact. It will provide
+	  CSCAN service with FIFO expiration of requests, switching to
+	  a new point in the service tree and doing a batch of IO from there
+	  in case of expiry.
+
 config CFQ_GROUP_IOSCHED
 	bool "CFQ Group Scheduling support"
 	depends on IOSCHED_CFQ && BLK_CGROUP
@@ -41,22 +48,12 @@ config CFQ_GROUP_IOSCHED
 	---help---
 	  Enable group IO scheduling in CFQ.
 
-config IOSCHED_DEADLINE
-	tristate "Deadline I/O scheduler"
-	default y
-	---help---
-	  The deadline I/O scheduler is simple and compact. It will provide
-	  CSCAN service with FIFO expiration of requests, switching to
-	  a new point in the service tree and doing a batch of IO from there
-	  in case of expiry.
-
 config IOSCHED_FIFO
 	bool
 	default y
-	---help---
+ 	---help---
 	  Fifo is similar to no-op I/O scheduler and it's a minimal scheduler that does basic merging
 	  and sorting. Ported from: https://github.com/AndroidDeveloperAlliance/ZenKernel_TUNA/blob/master/block/fifo-iosched.c
-
 
 config IOSCHED_FIOPS
 	tristate "IOPS based I/O scheduler"
@@ -89,9 +86,6 @@ config IOSCHED_ROW
 
 config IOSCHED_SIO
 	tristate "Simple I/O scheduler"
-
-config IOSCHED_CFQ
-	tristate "CFQ I/O scheduler"
 	default y
 	---help---
 	  The Simple I/O scheduler is an extremely simple scheduler,
@@ -141,15 +135,8 @@ choice
 	  Select the I/O scheduler which will be used by default for all
 	  block devices.
 
-config DEFAULT_BFQ
-	bool "BFQ" if IOSCHED_BFQ=y
-	help
-		Selects BFQ as the default I/O scheduler which will be
-		used by default for all block devices.
-		The BFQ I/O scheduler aims at distributing the bandwidth
-		as desired, independently of the disk parameters and with
-		any workload. It also tries to guarantee low latency to
-		interactive and soft real-time applications.
+	config DEFAULT_BFQ
+		bool "BFQ" if IOSCHED_BFQ=y
 
 	config DEFAULT_CFQ
 		bool "CFQ" if IOSCHED_CFQ=y
@@ -203,14 +190,14 @@ config DEFAULT_IOSCHED
 	default "deadline" if DEFAULT_DEADLINE
 	default "fifo" if DEFAULT_FIFO
 	default "fiops" if DEFAULT_FIOPS
-	default "noop" if DEFAULT_NOOP
+	default "maple" if DEFAULT_MAPLE
+ 	default "noop" if DEFAULT_NOOP
 	default "row" if DEFAULT_ROW
 	default "sio" if DEFAULT_SIO
 	default "sioplus" if DEFAULT_SIOPLUS
 	default "tripndroid" if DEFAULT_TRIPNDROID
 	default "vr" if DEFAULT_VR
 	default "zen" if DEFAULT_ZEN
-	default "maple" if DEFAULT_MAPLE
 
 endmenu
 

@@ -103,15 +103,6 @@ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
 
-config CPU_FREQ_DEFAULT_GOV_BLU_ACTIVE
-	bool "blu_active"
-	select CPU_FREQ_GOV_BLU_ACTIVE
-	help
-		Use the CPUFreq governor 'blu_active' as default. This allows
-		you to get a full dynamic cpu frequency capable system by simply
-		loading your cpufreq low-level hardware driver, using the
-		'interactive' governor for latency-sensitive workloads.
-
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	bool "interactive"
 	select CPU_FREQ_GOV_INTERACTIVE
@@ -120,6 +111,45 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	  you to get a full dynamic cpu frequency capable system by simply
 	  loading your cpufreq low-level hardware driver, using the
 	  'interactive' governor for latency-sensitive workloads.
+
+config CPU_FREQ_DEFAULT_GOV_IMPULSE
+	bool "impulse"
+	select CPU_FREQ_GOV_IMPULSE
+	help
+		Use the CPUFreq governor 'impulse' as default. This allows
+		you to get a full dynamic cpu frequency capable system by simply
+		loading your cpufreq low-level hardware driver, using the
+		'impulse' governor for latency-sensitive workloads.
+
+config CPU_FREQ_DEFAULT_GOV_RELAXED
+	bool "relaxed"
+	select CPU_FREQ_GOV_RELAXED
+	select CPU_FREQ_GOV_INTERACTIVE
+	help
+		Use the CPUFreq governor 'relaxed' as default. This allows
+		you to get a full dynamic frequency capable system by simply
+		loading your cpufreq low-level hardware driver.
+		Be aware that not all cpufreq drivers support the conservative
+		governor. If unsure have a look at the help section of the
+		driver. Fallback governor will be the interactive governor.
+
+config CPU_FREQ_DEFAULT_GOV_CAFACTIVE
+	bool "cafactive"
+	select CPU_FREQ_GOV_CAFACTIVE
+	help
+		Use the CPUFreq governor 'cafactive' as default. This allows
+		you to get a full dynamic cpu frequency capable system by simply
+		loading your cpufreq low-level hardware driver, using the
+		'cafactive' governor for latency-sensitive workloads.
+
+config CPU_FREQ_DEFAULT_GOV_BLU_ACTIVE
+	bool "blu_active"
+	select CPU_FREQ_GOV_BLU_ACTIVE
+	help
+		Use the CPUFreq governor 'blu_active' as default. This allows
+		you to get a full dynamic cpu frequency capable system by simply
+		loading your cpufreq low-level hardware driver, using the
+		'interactive' governor for latency-sensitive workloads.
 
 endchoice
 
@@ -178,16 +208,6 @@ config CPU_FREQ_GOV_ONDEMAND
 
 	  If in doubt, say N.
 
-config CPU_FREQ_GOV_BLU_ACTIVE
-	tristate "'blu_active' cpufreq policy governor"
-	help
-		'blu_active' - This driver adds a dynamic cpufreq policy governor
-		interactive workloads.
-
-		To compile this driver as a module, choose M here: the
-		module will be called cpufreq_blu_active.
-		designed for latency-sensitive workloads.
-
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
 	help
@@ -228,6 +248,46 @@ config CPU_FREQ_GOV_CONSERVATIVE
 	  For details, take a look at linux/Documentation/cpu-freq.
 
 	  If in doubt, say N.
+
+config CPU_FREQ_GOV_IMPULSE
+	tristate "'interactive' cpufreq policy governor"
+	help
+		'impulse' - This driver adds a dynamic cpufreq policy governor
+		designed for latency-sensitive workloads.
+
+		If in doubt, say N.
+
+config CPU_FREQ_GOV_RELAXED
+	tristate "'relaxed' cpufreq governor"
+	depends on CPU_FREQ
+	select CPU_FREQ_GOV_COMMON
+	default y
+	help
+		'relaxed' - similar to 'conservative', but optimized for devices
+		that go into suspended or display off states often.
+
+config CPU_FREQ_GOV_CAFACTIVE
+	tristate "'cafactive' cpufreq policy governor"
+	help
+		'cafactive' - CodeAurora(Qualcomm) version of interactive
+		cpufreq policy governor.
+
+		To compile this driver as a module, choose M here: the
+		module will be called cpufreq_cafactive.
+
+		If in doubt, say N.
+
+config CPU_FREQ_GOV_BLU_ACTIVE
+	tristate "'blu_active' cpufreq policy governor"
+	help
+		'blu_active' - This driver adds a dynamic cpufreq policy governor
+		interactive workloads.
+
+		To compile this driver as a module, choose M here: the
+		module will be called cpufreq_blu_active.
+		designed for latency-sensitive workloads.
+
+comment "CPU frequency scaling drivers"
 
 config CPUFREQ_DT
 	tristate "Generic DT based cpufreq driver"

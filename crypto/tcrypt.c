@@ -272,23 +272,21 @@ static void sg_init_aead(struct scatterlist *sg, char *xbuf[XBUFSIZE],
 			unsigned int buflen)
 {
 	int np = (buflen + PAGE_SIZE - 1)/PAGE_SIZE;
-	int k, rem;
+	int k;
 
-	np = (np > XBUFSIZE) ? XBUFSIZE : np;
-	rem = buflen % PAGE_SIZE;
 #if 0 // Prevent 60109 : Logically dead code
 	if (np > XBUFSIZE) {
 		rem = PAGE_SIZE;
 		np = XBUFSIZE;
+	} else {
+		rem = buflen % PAGE_SIZE;
 	}
 #endif
+
 	sg_init_table(sg, np);
-	for (k = 0; k < np; ++k) {
-		if (k == (np-1))
-			sg_set_buf(&sg[k], xbuf[k], rem);
-		else
-			sg_set_buf(&sg[k], xbuf[k], PAGE_SIZE);
-	}
+	np--;
+	for (k = 0; k < np; k++)
+		sg_set_buf(&sg[k], xbuf[k], PAGE_SIZE);
 }
 
 static void test_aead_speed(const char *algo, int enc, unsigned int secs,
@@ -306,16 +304,20 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 	struct scatterlist *sgout;
 	const char *e;
 	void *assoc;
-	char iv[MAX_IVLEN];
+	char *iv;
 	char *xbuf[XBUFSIZE];
 	char *xoutbuf[XBUFSIZE];
 	char *axbuf[XBUFSIZE];
 	unsigned int *b_size;
 	unsigned int iv_len;
 
+	iv = kzalloc(MAX_IVLEN, GFP_KERNEL);
+	if (!iv)
+		return;
+
 	if (aad_size >= PAGE_SIZE) {
 		pr_err("associate data length (%u) too big\n", aad_size);
-		return;
+		goto out_noxbuf;
 	}
 
 	if (enc == ENCRYPT)
@@ -381,7 +383,7 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 
 			iv_len = crypto_aead_ivsize(tfm);
 			if (iv_len)
-				memset(&iv, 0xff, iv_len);
+				memset(iv, 0xff, iv_len);
 
 			crypto_aead_clear_flags(tfm, ~0);
 			printk(KERN_INFO "test %u (%d bit key, %d byte blocks): ",
@@ -434,6 +436,7 @@ out_nooutbuf:
 out_noaxbuf:
 	testmgr_free_buf(xbuf);
 out_noxbuf:
+	kfree(iv);
 	return;
 }
 
@@ -790,10 +793,9 @@ static inline int do_one_ahash_op(struct ahash_request *req, int ret)
 	if (ret == -EINPROGRESS || ret == -EBUSY) {
 		struct tcrypt_result *tr = req->base.data;
 
-		ret = wait_for_completion_interruptible(&tr->completion);
-		if (!ret)
-			ret = tr->err;
+		wait_for_completion(&tr->completion);
 		reinit_completion(&tr->completion);
+		ret = tr->err;
 	}
 	return ret;
 }
@@ -1019,10 +1021,9 @@ static inline int do_one_acipher_op(struct ablkcipher_request *req, int ret)
 	if (ret == -EINPROGRESS || ret == -EBUSY) {
 		struct tcrypt_result *tr = req->base.data;
 
-		ret = wait_for_completion_interruptible(&tr->completion);
-		if (!ret)
-			ret = tr->err;
+		wait_for_completion(&tr->completion);
 		reinit_completion(&tr->completion);
+		ret = tr->err;
 	}
 
 	return ret;
@@ -1178,9 +1179,9 @@ static void test_acipher_speed(const char *algo, int enc, unsigned int secs,
 				goto out_free_req;
 			}
 
-			sg_init_table(sg, TVMEMSIZE);
-
 			k = *keysize + *b_size;
+			sg_init_table(sg, DIV_ROUND_UP(k, PAGE_SIZE));
+
 			if (k > PAGE_SIZE) {
 				sg_set_buf(sg, tvmem[0] + *keysize,
 				   PAGE_SIZE - *keysize);
@@ -1272,15 +1273,22 @@ static inline int tcrypt_test(const char *alg)
 	return ret;
 }
 
-static int do_test(int m)
+static int do_test(const char *alg, u32 type, u32 mask, int m)
 {
 	int i;
 	int ret = 0;
 
 	switch (m) {
 	case 0:
+		if (alg) {
+			if (!crypto_has_alg(alg, type,
+					    mask ?: CRYPTO_ALG_TYPE_MASK))
+				ret = -ENOENT;
+			break;
+		}
+
 		for (i = 1; i < 200; i++)
-			ret += do_test(i);
+			ret += do_test(NULL, 0, 0, i);
 		break;
 
 	case 1:
@@ -1799,6 +1807,11 @@ static int do_test(int m)
 		break;
 
 	case 300:
+		if (alg) {
+			test_hash_speed(alg, sec, generic_hash_speed_template);
+			break;
+		}
+
 		/* fall through */
 
 	case 301:
@@ -1885,6 +1898,11 @@ static int do_test(int m)
 		break;
 
 	case 400:
+		if (alg) {
+			test_ahash_speed(alg, sec, generic_hash_speed_template);
+			break;
+		}
+
 		/* fall through */
 
 	case 401:
@@ -2261,12 +2279,6 @@ static int do_test(int m)
 	return ret;
 }
 
-static int do_alg_test(const char *alg, u32 type, u32 mask)
-{
-	return crypto_has_alg(alg, type, mask ?: CRYPTO_ALG_TYPE_MASK) ?
-	       0 : -ENOENT;
-}
-
 static int __init tcrypt_mod_init(void)
 {
 	int err = -ENOMEM;
@@ -2283,10 +2295,7 @@ static int __init tcrypt_mod_init(void)
 	mode = 1402; //For FIPS 140-2
 #endif
 
-	if (alg)
-		err = do_alg_test(alg, type, mask);
-	else
-		err = do_test(mode);
+	err = do_test(alg, type, mask, mode);
 
 #if FIPS_FUNC_TEST == 1
 	printk(KERN_ERR "FIPS FUNC TEST: Do test again\n");

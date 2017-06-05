@@ -669,8 +669,6 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, exynos);
 
 	exynos->dev	= dev;
-
-	exynos->dev	= dev;
 #if IS_ENABLED(CONFIG_OF)
 	exynos->drv_data = dwc3_exynos_get_driver_data(pdev);
 #endif

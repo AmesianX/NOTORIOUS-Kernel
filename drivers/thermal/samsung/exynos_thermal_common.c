@@ -38,6 +38,10 @@ unsigned long cpu_max_temp[2];
 int get_real_max_freq(cluster_type cluster);
 #endif
 
+bool is_cpu_thermal = false;
+static int enter_little_thermal_temp = 60;
+static int exit_little_thermal_temp = 55;
+
 struct exynos_thermal_zone {
 	enum thermal_device_mode mode;
 	struct thermal_zone_device *therm_dev;
@@ -51,6 +55,31 @@ struct exynos_thermal_zone {
 static DEFINE_MUTEX (thermal_suspend_lock);
 static bool suspended;
 static bool is_cpu_hotplugged_out;
+
+static ssize_t show_little_thermal_temp(struct kobject *kobj,
+				struct attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n", enter_little_thermal_temp);
+}
+
+static ssize_t store_little_thermal_temp(struct kobject *kobj, struct attribute *attr,
+					const char *buf, size_t count)
+{
+	int thermal_temp;
+
+	if (!sscanf(buf, "%8d", &thermal_temp))
+		return -EINVAL;
+
+	if (thermal_temp < 40 || thermal_temp > 90) {
+		pr_err("%s: invalid value (%d)\n", __func__, thermal_temp);
+		return -EINVAL;
+	}
+
+	enter_little_thermal_temp = thermal_temp;
+	exit_little_thermal_temp = thermal_temp - 5;
+
+	return count;
+}
 
 /* Get mode callback functions for thermal zone */
 static int exynos_get_mode(struct thermal_zone_device *thermal,
@@ -407,7 +436,10 @@ static int exynos_throttle_cpu_hotplug(struct thermal_zone_device *thermal)
 			mutex_unlock(&thermal->lock);
 
 			pm_qos_update_request(&thermal_cpu_hotplug_request, NR_CLUST1_CPUS);
-		}
+		} else if (cur_temp > enter_little_thermal_temp)
+			is_cpu_thermal = true;
+		else if (cur_temp < exit_little_thermal_temp)
+			is_cpu_thermal = false;
 	}
 
 	return ret;
@@ -566,6 +598,14 @@ static struct notifier_block exynos_tmu_pm_notifier = {
 	.notifier_call = exynos_pm_notifier,
 };
 
+#if defined(CONFIG_GPU_THERMAL) && defined(CONFIG_MALI_DEBUG_KERNEL_SYSFS)
+struct thermal_sensor_conf *gpu_thermal_conf_ptr = NULL;
+#endif
+
+static struct global_attr little_thermal_temp =
+		__ATTR(little_thermal_temp, S_IRUGO | S_IWUSR,
+			show_little_thermal_temp, store_little_thermal_temp);
+
 /* Register with the in-kernel thermal management */
 int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 {
@@ -613,6 +653,9 @@ int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 		} else if (sensor_conf->d_type ==  GPU) {
 			th_zone->cool_dev[th_zone->cool_dev_size] =
 					gpufreq_cooling_register(&mask_val);
+#if defined(CONFIG_GPU_THERMAL) && defined(CONFIG_MALI_DEBUG_KERNEL_SYSFS)
+			gpu_thermal_conf_ptr = sensor_conf;
+#endif
 		} else if (sensor_conf->d_type ==  ISP) {
 			th_zone->cool_dev[th_zone->cool_dev_size] =
 					isp_cooling_register(&mask_val);
@@ -655,6 +698,12 @@ int exynos_register_thermal(struct thermal_sensor_conf *sensor_conf)
 	if (sensor_conf->id == 0)
 		register_pm_notifier(&exynos_tmu_pm_notifier);
 
+	ret = sysfs_create_file(power_kobj, &little_thermal_temp.attr);
+	if (ret) {
+		pr_err("%s: failed to create little thermal temp sysfs interface\n",
+			__func__);
+	}
+
 	dev_info(sensor_conf->dev,
 		"Exynos: Thermal zone(%s) registered\n", sensor_conf->name);
 
@@ -675,6 +724,10 @@ void exynos_unregister_thermal(struct thermal_sensor_conf *sensor_conf)
 		pr_err("Invalid temperature sensor configuration data\n");
 		return;
 	}
+
+#if defined(CONFIG_GPU_THERMAL) && defined(CONFIG_MALI_DEBUG_KERNEL_SYSFS)
+	gpu_thermal_conf_ptr = NULL;
+#endif
 
 	th_zone = sensor_conf->pzone_data;
 

@@ -105,7 +105,8 @@ enum {
 	BINDER_DEBUG_PRIORITY_CAP           = 1U << 14,
 	BINDER_DEBUG_BUFFER_ALLOC_ASYNC     = 1U << 15,
 };
-static uint32_t binder_debug_mask = 0;
+static uint32_t binder_debug_mask = BINDER_DEBUG_USER_ERROR |
+	BINDER_DEBUG_FAILED_TRANSACTION | BINDER_DEBUG_DEAD_TRANSACTION;
 module_param_named(debug_mask, binder_debug_mask, uint, S_IWUSR | S_IRUGO);
 
 static bool binder_debug_no_lock;
@@ -1458,6 +1459,7 @@ static void binder_transaction(struct binder_proc *proc,
 	} else {
 		if (tr->target.handle) {
 			struct binder_ref *ref;
+
 			ref = binder_get_ref(proc, tr->target.handle, true);
 			if (ref == NULL) {
 				binder_user_error("%d:%d got transaction to invalid handle\n",
@@ -3635,7 +3637,7 @@ static void print_binder_proc_stats(struct seq_file *m,
 
 #ifdef CONFIG_SEC_TRACE_BINDERCNT
 	if (proc->stats.process_bnd_cnt) {
-		seq_printf(m, "  CALLS_TO_TARGET_PROCESS (from %s %d): %d\n",
+		seq_printf(m, "  CALLS_TO_TARGET_PROCESS (from %s %d): %d\n", 
 				proc->tsk->comm, proc->tsk->pid, proc->stats.process_bnd_cnt);
 	}
 #endif
@@ -3756,21 +3758,33 @@ static int binder_process_transaction_show(struct seq_file *m, void *unused)
 	struct binder_proc *proc;
 	int res, ppid;
 	char * title;
+	int do_lock = !binder_debug_no_lock;
 
 	title = kmalloc(MAX_PROCTITLE_LEN, GFP_KERNEL);
 	if (!title)
 		return -1;
 
+	if (do_lock)
+		binder_lock(__func__);
+
 	hlist_for_each_entry(proc, &binder_procs, proc_node) {
 		// Don't let show any daemon's binder count
 		ppid = proc->tsk->group_leader->parent->pid;
+
+		preempt_enable_no_resched();
 		res = get_cmdline(proc->tsk, title, MAX_PROCTITLE_LEN);
+		preempt_disable();
+
 		if (proc->stats.process_bnd_cnt && ppid != 1 && ppid != 2) {
 			seq_printf(m, "%d_%d_%s\n", proc->pid,
 					proc->stats.process_bnd_cnt,
 					res == 0 ? proc->tsk->comm : title);
 		}
 	}
+
+	if (do_lock)
+		binder_unlock(__func__);
+
 	kfree(title);
 
 	return 0;

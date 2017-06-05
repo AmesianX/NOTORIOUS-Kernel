@@ -441,11 +441,10 @@ static void dpm_watchdog_handler(unsigned long data)
 {
 	struct dpm_watchdog *wd = (void *)data;
 
-#ifdef CONFIG_SEC_DEBUG
-	sec_debug_store_extra_buf(INFO_DPM_TIMEOUT, "%s", dev_name(wd->dev));
-#endif
-	
 	dev_emerg(wd->dev, "**** DPM device timeout ****\n");
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+	sec_debug_set_extra_info_dpm_timeout(dev_name(wd->dev));
+#endif
 	show_stack(wd->tsk, NULL);
 	panic("%s %s: unrecoverable failure\n",
 		dev_driver_string(wd->dev), dev_name(wd->dev));
@@ -696,6 +695,10 @@ void dpm_resume_early(pm_message_t state)
 	struct device *dev;
 	ktime_t starttime = ktime_get();
 
+#ifdef CONFIG_BOEFFLA_WL_BLOCKER
+	pm_print_active_wakeup_sources();
+#endif
+
 	trace_suspend_resume(TPS("dpm_resume_early"), state.event, true);
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
@@ -871,13 +874,12 @@ static void dpm_drv_timeout(unsigned long data)
 	struct device *dev = wd_data->dev;
 	struct task_struct *tsk = wd_data->tsk;
 
-#ifdef CONFIG_SEC_DEBUG
-	sec_debug_store_extra_buf(INFO_DPM_TIMEOUT, "%s (%s)", dev_name(dev),
-		(dev->driver ? dev->driver->name : "no driver"));
-#endif
-
 	printk(KERN_EMERG "**** DPM device timeout: %s (%s)\n", dev_name(dev),
 	       (dev->driver ? dev->driver->name : "no driver"));
+
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+	sec_debug_set_extra_info_dpm_timeout((char *)dev_name(dev));
+#endif
 
 	printk(KERN_EMERG "dpm suspend stack:\n");
 	show_stack(tsk, NULL);

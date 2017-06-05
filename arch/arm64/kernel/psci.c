@@ -115,7 +115,6 @@ static void psci_power_state_unpack(u32 power_state,
 			PSCI_0_2_POWER_STATE_AFFL_SHIFT;
 }
 
-
 static int psci_get_version(void)
 {
 	int err;
